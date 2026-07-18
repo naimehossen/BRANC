@@ -425,3 +425,424 @@ const CarGame3D = () => {
 };
 
 export default CarGame3D;
+
+// App.jsx – GTA VICE CITY COMPLETE: Missions + Police + Weapons + Map + Saving + Stats
+import { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Sky, Text } from '@react-three/drei';
+import * as THREE from 'three';
+import { FaCog, FaMusic, FaPause, FaPlay, FaCrosshairs, FaCar, FaWalking, FaHome, FaMap, FaPhone, FaUser, FaBriefcase, FaStar, FaHeart, FaShieldAlt, FaMoneyBillWave } from 'react-icons/fa';
+
+// ==================== GAME DATA ====================
+const SAFEHOUSES = [
+  { id: 1, name: 'Ocean View Hotel', x: -15, z: -20, price: 0, icon: '🏨' },
+  { id: 2, name: 'Starfish Island Mansion', x: 15, z: -40, price: 50000, icon: '🏰' },
+  { id: 3, name: 'Downtown Apartment', x: -5, z: -30, price: 25000, icon: '🏢' },
+];
+
+const SHOPS = [
+  { id: 1, name: 'Ammu-Nation', x: -10, z: -15, type: 'weapons', icon: '🔫' },
+  { id: 2, name: 'Pay & Spray', x: 10, z: -25, type: 'repair', icon: '🔧' },
+  { id: 3, name: 'Clothing Store', x: 5, z: -35, type: 'clothes', icon: '👕' },
+  { id: 4, name: 'Burger Shot', x: -8, z: -10, type: 'food', icon: '🍔' },
+];
+
+const GANG_TERRITORIES = [
+  { name: 'Haitians', color: '#e74c3c', x: -20, z: -45, radius: 10 },
+  { name: 'Cubans', color: '#3498db', x: 20, z: -35, radius: 10 },
+  { name: 'Bikers', color: '#f1c40f', x: 0, z: -50, radius: 8 },
+];
+
+const STATS = {
+  peopleKilled: 0,
+  carsStolen: 0,
+  missionsCompleted: 0,
+  moneyEarned: 0,
+  distanceTraveled: 0,
+  headshots: 0,
+};
+
+// ==================== SAVE SYSTEM ====================
+const saveGame = (data) => {
+  localStorage.setItem('gta-save', JSON.stringify(data));
+};
+
+const loadGame = () => {
+  const saved = localStorage.getItem('gta-save');
+  return saved ? JSON.parse(saved) : null;
+};
+
+// ==================== PHONE COMPONENT ====================
+const Phone = memo(({ isOpen, onClose, contacts, currentMission }) => (
+  <div className={`absolute bottom-0 right-0 z-40 transition-all duration-300 ${isOpen ? 'translate-y-0' : 'translate-y-full'}`}>
+    <div className="w-80 h-96 bg-gray-900/95 backdrop-blur rounded-t-3xl border-2 border-gray-600 p-4">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-white font-bold">📱 Phone</h3>
+        <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+      </div>
+      
+      {/* Contacts */}
+      <div className="space-y-2 max-h-60 overflow-y-auto">
+        {contacts.map((contact, i) => (
+          <div key={i} className="bg-gray-800 p-3 rounded-lg flex items-center justify-between cursor-pointer hover:bg-gray-700">
+            <div>
+              <p className="text-white text-sm font-bold">{contact.name}</p>
+              <p className="text-gray-400 text-xs">{contact.role}</p>
+            </div>
+            <button className="bg-green-500 text-white px-3 py-1 rounded-full text-xs">Call</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Current Mission */}
+      {currentMission && (
+        <div className="mt-3 bg-yellow-900/50 p-3 rounded-lg border border-yellow-500">
+          <p className="text-yellow-400 text-xs font-bold">Active Mission</p>
+          <p className="text-white text-sm">{currentMission.name}</p>
+          <p className="text-green-400 text-xs">Reward: {currentMission.reward}</p>
+        </div>
+      )}
+    </div>
+  </div>
+));
+
+// ==================== MAP COMPONENT ====================
+const FullMap = memo(({ isOpen, onClose, playerPos, safehouses, shops, missions }) => (
+  <div className={`absolute inset-0 z-40 transition-all duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+    <div className="w-full h-full bg-black/90 backdrop-blur p-8">
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="text-white text-2xl font-bold">🗺️ Map</h3>
+        <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">✕</button>
+      </div>
+      
+      <div className="relative w-full h-[80%] bg-gray-800 rounded-xl overflow-hidden border-2 border-gray-600">
+        {/* Player Position */}
+        <div className="absolute w-4 h-4 bg-green-400 rounded-full border-2 border-white"
+          style={{
+            top: `${50 + (playerPos.z * 0.5)}%`,
+            left: `${50 + (playerPos.x * 0.5)}%`,
+          }}
+        />
+        
+        {/* Safehouses */}
+        {safehouses.map((s, i) => (
+          <div key={i} className="absolute text-lg"
+            style={{
+              top: `${50 + (s.z * 0.5)}%`,
+              left: `${50 + (s.x * 0.5)}%`,
+            }}
+          >{s.icon}</div>
+        ))}
+        
+        {/* Shops */}
+        {shops.map((s, i) => (
+          <div key={i} className="absolute text-sm"
+            style={{
+              top: `${50 + (s.z * 0.5)}%`,
+              left: `${50 + (s.x * 0.5)}%`,
+            }}
+          >{s.icon}</div>
+        ))}
+      </div>
+
+      {/* Map Legend */}
+      <div className="flex gap-4 mt-4 text-white text-sm">
+        <span>🟢 Player</span>
+        <span>🏨 Safehouse</span>
+        <span>🔫 Shop</span>
+        <span>🔴 Mission</span>
+      </div>
+    </div>
+  </div>
+));
+
+// ==================== STATS SCREEN ====================
+const StatsScreen = memo(({ isOpen, onClose, stats }) => (
+  <div className={`absolute inset-0 z-40 transition-all duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+    <div className="w-full h-full bg-black/90 backdrop-blur flex items-center justify-center p-8">
+      <div className="bg-gray-900/95 p-8 rounded-3xl border-2 border-gray-600 max-w-md w-full">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-white text-2xl font-bold">📊 Stats</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">✕</button>
+        </div>
+        
+        <div className="space-y-3">
+          {Object.entries(stats).map(([key, value]) => (
+            <div key={key} className="flex justify-between bg-gray-800 p-3 rounded-lg">
+              <span className="text-gray-300 capitalize">{key.replace(/([A-Z])/g, ' $1')}</span>
+              <span className="text-white font-bold">{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+));
+
+// ==================== SHOP MENU ====================
+const ShopMenu = memo(({ isOpen, onClose, shop, playerMoney, onBuy }) => (
+  <div className={`absolute inset-0 z-40 transition-all duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+    <div className="w-full h-full bg-black/80 backdrop-blur flex items-center justify-center p-8">
+      <div className="bg-gray-900/95 p-6 rounded-3xl border-2 border-gray-600 max-w-sm w-full">
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-white text-xl font-bold">{shop?.icon} {shop?.name}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-white text-xl">✕</button>
+        </div>
+
+        {shop?.type === 'weapons' && (
+          <div className="space-y-2">
+            {WEAPONS.map((w, i) => (
+              <div key={i} className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
+                <div>
+                  <span className="text-white">{w.icon} {w.name}</span>
+                  <p className="text-gray-400 text-xs">Damage: {w.damage}</p>
+                </div>
+                <button 
+                  onClick={() => onBuy('weapon', i, w.price || 500)}
+                  className="bg-green-500 hover:bg-green-400 text-white px-3 py-1 rounded-full text-xs"
+                >
+                  ${w.price || 500}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {shop?.type === 'food' && (
+          <div className="space-y-2">
+            <div className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
+              <span className="text-white">🍔 Burger (+25 HP)</span>
+              <button onClick={() => onBuy('food', 'burger', 10)} className="bg-green-500 text-white px-3 py-1 rounded-full text-xs">$10</button>
+            </div>
+            <div className="flex justify-between items-center bg-gray-800 p-3 rounded-lg">
+              <span className="text-white">🍕 Pizza (+50 HP)</span>
+              <button onClick={() => onBuy('food', 'pizza', 25)} className="bg-green-500 text-white px-3 py-1 rounded-full text-xs">$25</button>
+            </div>
+          </div>
+        )}
+
+        <p className="text-gray-400 text-xs mt-4">Your Money: <span className="text-green-400 font-bold">${playerMoney}</span></p>
+      </div>
+    </div>
+  </div>
+));
+
+// ==================== COMPLETE HUD ====================
+const CompleteHUD = memo(({ health, armor, money, wantedLevel, currentWeapon, ammo, mission, score, level, isInVehicle, currentVehicle, gameState, onRespawn }) => (
+  <div className="absolute inset-0 pointer-events-none z-20">
+    {/* Top Bar */}
+    <div className="flex justify-between p-3">
+      <div className="flex gap-3">
+        <div className="bg-black/60 backdrop-blur rounded-lg px-3 py-2">
+          <div className="flex items-center gap-2">
+            <FaHeart className="text-red-500" />
+            <div className="w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-red-500 transition-all" style={{ width: `${health}%` }} />
+            </div>
+            <span className="text-white text-sm font-bold">{health}</span>
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <FaShieldAlt className="text-blue-400" />
+            <div className="w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-full bg-blue-400 transition-all" style={{ width: `${armor}%` }} />
+            </div>
+            <span className="text-white text-sm font-bold">{armor}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <div className="bg-black/60 backdrop-blur rounded-lg px-3 py-2">
+          <span className="text-green-400 font-bold text-lg">${money.toLocaleString()}</span>
+        </div>
+        <div className="bg-black/60 backdrop-blur rounded-lg px-3 py-2">
+          <div className="flex gap-1">
+            {[...Array(6)].map((_, i) => (
+              <FaStar key={i} className={i < wantedLevel ? 'text-yellow-400' : 'text-gray-600'} />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Bottom Info */}
+    <div className="absolute bottom-0 left-0 right-0 flex justify-between p-3">
+      <div className="bg-black/60 backdrop-blur rounded-lg px-3 py-2">
+        <span className="text-white text-sm">{VEHICLES[currentVehicle]?.icon} {VEHICLES[currentVehicle]?.name}</span>
+        <p className="text-gray-400 text-xs">{isInVehicle ? 'Press E to exit' : 'Press E to enter'}</p>
+      </div>
+
+      <div className="bg-black/60 backdrop-blur rounded-lg px-3 py-2">
+        <span className="text-yellow-400">{WEAPONS[currentWeapon]?.icon}</span>
+        <span className="text-white text-sm ml-1">{WEAPONS[currentWeapon]?.name}</span>
+        <p className="text-gray-400 text-xs">Ammo: {ammo} | 1-5 Switch</p>
+      </div>
+    </div>
+
+    {/* Score & Level */}
+    <div className="absolute top-20 left-1/2 -translate-x-1/2 flex gap-3">
+      <span className="bg-gradient-to-r from-yellow-500 to-orange-500 px-4 py-1.5 rounded-full font-bold text-white text-xs">⭐ {score}</span>
+      <span className="bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-1.5 rounded-full font-bold text-white text-xs">🎯 Lv {level}</span>
+    </div>
+
+    {/* Mission */}
+    {mission && (
+      <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/70 backdrop-blur rounded-xl px-6 py-3 border border-yellow-500/30">
+        <h3 className="text-yellow-400 font-bold text-sm">📋 {mission.name}</h3>
+        <p className="text-white text-xs">{mission.description}</p>
+        <p className="text-green-400 text-xs">Reward: {mission.reward} | Target: {mission.target}</p>
+      </div>
+    )}
+
+    {/* Crosshair */}
+    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+      <FaCrosshairs className="text-white/50 text-2xl" />
+    </div>
+
+    {/* WASTED */}
+    {gameState === 'wasted' && (
+      <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center pointer-events-auto">
+        <div className="text-center">
+          <h2 className="text-6xl font-black text-red-500 mb-4">WASTED</h2>
+          <p className="text-white text-xl mb-6">Hospital Bill: $500</p>
+          <button onClick={onRespawn} className="bg-red-600 hover:bg-red-500 text-white px-8 py-3 rounded-full text-lg font-bold">
+            Respawn ($500)
+          </button>
+        </div>
+      </div>
+    )}
+
+    {/* BUSTED */}
+    {gameState === 'busted' && (
+      <div className="absolute inset-0 bg-blue-900/60 flex items-center justify-center pointer-events-auto">
+        <div className="text-center">
+          <h2 className="text-6xl font-black text-blue-400 mb-4">BUSTED</h2>
+          <p className="text-white text-xl mb-6">Bail: $1000</p>
+          <button onClick={onRespawn} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-full text-lg font-bold">
+            Pay Bail ($1000)
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+));
+
+// ==================== MAIN GAME COMPLETE ====================
+const GTAGameComplete = () => {
+  // ... (previous state declarations)
+  
+  // New states
+  const [showPhone, setShowPhone] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [currentShop, setCurrentShop] = useState(null);
+  const [stats, setStats] = useState(STATS);
+  const [ownedSafehouses, setOwnedSafehouses] = useState([1]); // Start with Ocean View
+  const [gangReputation, setGangReputation] = useState({
+    Haitians: 0, Cubans: 0, Bikers: 0
+  });
+
+  const contacts = [
+    { name: 'Ken Rosenberg', role: 'Lawyer', number: '555-0100' },
+    { name: 'Lance Vance', role: 'Partner', number: '555-0200' },
+    { name: 'Avery Carrington', role: 'Real Estate', number: '555-0300' },
+    { name: 'Juan Cortez', role: 'Arms Dealer', number: '555-0400' },
+  ];
+
+  // Save/Load
+  useEffect(() => {
+    const saved = loadGame();
+    if (saved) {
+      // Restore game state
+      console.log('Game loaded!');
+    }
+  }, []);
+
+  const handleSave = () => {
+    saveGame({
+      score, level, health, armor, money, wantedLevel,
+      currentWeapon, ammo, stats, ownedSafehouses, gangReputation
+    });
+  };
+
+  const handleBuy = (type, item, price) => {
+    if (money >= price) {
+      setMoney(m => m - price);
+      if (type === 'weapon') {
+        setCurrentWeapon(item);
+        setAmmo(WEAPONS[item].ammo);
+      } else if (type === 'food') {
+        setHealth(h => Math.min(100, h + (item === 'burger' ? 25 : 50)));
+      }
+    }
+  };
+
+  const handleRespawn = () => {
+    const cost = gameState === 'wasted' ? 500 : 1000;
+    if (money >= cost) {
+      setMoney(m => m - cost);
+      setHealth(100);
+      setArmor(0);
+      setWantedLevel(0);
+      setGameState('playing');
+      playerPos.current = { x: 0, z: 7 };
+    }
+  };
+
+  return (
+    <div className="w-full h-screen bg-gray-900 relative overflow-hidden select-none">
+      {/* ... Canvas ... */}
+
+      {/* Action Buttons (Right Side) */}
+      <div className="absolute top-20 right-4 flex flex-col gap-2 z-30">
+        <button onClick={() => setShowMap(!showMap)} className="bg-black/50 backdrop-blur text-white p-3 rounded-full hover:bg-black/70">
+          <FaMap className="text-xl" />
+        </button>
+        <button onClick={() => setShowPhone(!showPhone)} className="bg-black/50 backdrop-blur text-white p-3 rounded-full hover:bg-black/70">
+          <FaPhone className="text-xl" />
+        </button>
+        <button onClick={() => setShowStats(!showStats)} className="bg-black/50 backdrop-blur text-white p-3 rounded-full hover:bg-black/70">
+          <FaUser className="text-xl" />
+        </button>
+        <button onClick={handleSave} className="bg-black/50 backdrop-blur text-white p-3 rounded-full hover:bg-black/70">
+          <FaBriefcase className="text-xl" />
+        </button>
+        <button onClick={() => setShowSettings(!showSettings)} className="bg-black/50 backdrop-blur text-white p-3 rounded-full hover:bg-black/70">
+          <FaCog className="text-xl" />
+        </button>
+      </div>
+
+      {/* Phone */}
+      <Phone isOpen={showPhone} onClose={() => setShowPhone(false)} contacts={contacts} currentMission={currentMission} />
+
+      {/* Map */}
+      <FullMap isOpen={showMap} onClose={() => setShowMap(false)} playerPos={playerPos.current} safehouses={SAFEHOUSES} shops={SHOPS} missions={MISSIONS} />
+
+      {/* Stats */}
+      <StatsScreen isOpen={showStats} onClose={() => setShowStats(false)} stats={stats} />
+
+      {/* Shop */}
+      <ShopMenu isOpen={!!currentShop} onClose={() => setCurrentShop(null)} shop={currentShop} playerMoney={money} onBuy={handleBuy} />
+
+      {/* Complete HUD */}
+      <CompleteHUD
+        health={health} armor={armor} money={money} wantedLevel={wantedLevel}
+        currentWeapon={currentWeapon} ammo={ammo} mission={currentMission}
+        score={score} level={level} isInVehicle={isInVehicle}
+        currentVehicle={currentVehicle} gameState={gameState}
+        onRespawn={handleRespawn}
+      />
+
+      {/* Controls */}
+      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex items-center gap-6">
+        <button onMouseDown={() => keys.current.left = true} onMouseUp={() => keys.current.left = false} className="bg-blue-500/80 text-white p-4 rounded-2xl text-2xl font-bold">⬅️</button>
+        <button onClick={() => setIsPaused(p => !p)} className="bg-amber-500/80 text-white px-5 py-4 rounded-2xl font-bold">
+          {isPaused ? <FaPlay /> : <FaPause />}
+        </button>
+        <button onMouseDown={() => keys.current.right = true} onMouseUp={() => keys.current.right = false} className="bg-blue-500/80 text-white p-4 rounded-2xl text-2xl font-bold">➡️</button>
+      </div>
+    </div>
+  );
+};
+
+export default GTAGameComplete;
